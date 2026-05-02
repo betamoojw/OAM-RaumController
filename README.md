@@ -10,3 +10,19 @@ It uses some Modules from the OpenKNX project to implement a device, which can a
 For more information look into our [OpenKNX-wiki](https://github.com/OpenKNX/OpenKNX/wiki).
 
 Thanks to all, who made this project successful.
+
+
+===
+
+RaumController (as a “room brain” running on a KNX device) is a complete KNX *room-level* control application that combines sensors, logic, and control functions into one device to manage everything inside a room.
+
+RaumController (different from other simple KNX devices):
+    sensor + logic engine + actuator coordination
+    ➡️ all-in-one room automation node
+
+RaumController = a decentralized KNX room automation controller
+    combines inputs + logic + outputs
+    runs fully on-device
+    replaces the need for:
+        separate logic controllers
+        multiple single-purpose KNX devices
