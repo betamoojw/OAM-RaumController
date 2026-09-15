@@ -6,7 +6,7 @@
 
 
   <op:config name="%ROOM_ApplicationVersion_Dev%" value="3.7.0" />
-  <op:config name="%ROOM_ApplicationVersion%" value="5.6.0" />
+  <op:config name="%ROOM_ApplicationVersion%" value="5.6.1" />
   
   
   <op:config name="%UCT_VerifyVersion%" value="0.5" />
@@ -14,7 +14,7 @@
   <op:config name="%WIRE_VerifyVersion%" value="2.2" />
   <op:config name="%PM_VerifyVersion%" value="3.10" />
   <op:config name="%LOG_VerifyVersion%" value="4.4" />
-  <op:config name="%BASE_VerifyVersion%" value="1.9" />
+  <op:config name="%BASE_VerifyVersion%" value="2.0" />
   <op:config name="%BTN_VerifyVersion%" value="0.7" />
   <op:config name="%BI_VerifyVersion%" value="0.4" />
   <op:config name="%ADC_VerifyVersion%" value="0.1" />
