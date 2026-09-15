@@ -25,16 +25,22 @@ Dazu zwei Dinge, die mit FTC nichts zu tun zu haben scheinen und es doch tun: di
 Deshalb ist jede Zahl hier gemessen und jeder verworfene Weg mit dem Grund vermerkt. Wer nur die Schritte
 will, folgt 0 bis 6 der Reihe nach; wer wissen will *warum*, findet es in den Zwischenabschnitten.
 
-Die Referenz des Moduls selbst liegt in `lib/OFM-FileTransferModule/doc/`: `FLAGS.md` (jeder Switch und
-seine Kosten), `INTEGRATION.md` (das allgemeine Rezept), `SECURITY.md`, `CONSOLE.md`, `DELTA.md`.
+**Nur die Schritte, ohne Begründungen?** → [FTC-Integration-TLDR.md](FTC-Integration-TLDR.md)
+
+Die Referenz des Moduls selbst liegt in `lib/OFM-FileTransferModule/doc/`, seit dem Umbau nach Zielgruppe
+gegliedert: `reference/flags.md` (jeder Switch und seine Kosten), `reference/integration.md` (das allgemeine
+Rezept), `guide/unlocking-a-device.md`, `guide/console.md`, `reference/delta.md`.
 Diese Seite ist das durchgerechnete Beispiel, kein Ersatz dafür.
 
 ## Inhalt
 
 - [0. Voraussetzung: welche Branches nötig sind](#0-voraussetzung-welche-branches-nötig-sind)
+  - [Warum der knx-Branch faktisch dazugehört](#warum-der-knx-branch-faktisch-dazugehört)
   - [Warum OFM-UsbExchange zwingend wird](#warum-ofm-usbexchange-zwingend-wird)
 - [Ausgangslage: was ein eingebundenes, aber unkonfiguriertes FTM liefert](#ausgangslage-was-ein-eingebundenes-aber-unkonfiguriertes-ftm-liefert)
 - [1. Build-Switches — `platformio.custom.ini`](#1-build-switches--platformiocustomini)
+  - [Dazu passend: die TPUart-Diagnoseschalter](#dazu-passend-die-tpuart-diagnoseschalter)
+  - [Prüfen, ob sie wirklich greifen](#prüfen-ob-sie-wirklich-greifen)
 - [2. ETS-Seite — Teil 1: ein `op:define` je Produkt-XML](#2-ets-seite--teil-1-ein-opdefine-je-produkt-xml)
 - [2b. ETS-Seite — Teil 2: das `op:define` allein setzt den Block an die falsche Stelle](#2b-ets-seite--teil-2-das-opdefine-allein-setzt-den-block-an-die-falsche-stelle)
   - [Warum es keinen kürzeren Weg gibt](#warum-es-keinen-kürzeren-weg-gibt)
@@ -58,21 +64,36 @@ Diese Seite ist das durchgerechnete Beispiel, kein Ersatz dafür.
   - [Wenn ein Produkt wirklich kleine Boards hat](#wenn-ein-produkt-wirklich-kleine-boards-hat)
 - [Stolperfallen aus diesem Umbau](#stolperfallen-aus-diesem-umbau)
 - [Offen / geplant](#offen--geplant)
-  - [`scripts/release/Post.ps1` liegt in keinem Clone](#scriptsreleasepostps1-liegt-in-keinem-clone)
+  - [Behoben: `scripts/release/Post.ps1` lag in keinem Clone](#behoben-scriptsreleasepostps1-lag-in-keinem-clone)
   - [Das mächtigere `Build-Release.ps1` nach OGM-Common](#das-mächtigere-build-releaseps1-nach-ogm-common)
 - [Nicht Teil dieser Änderung](#nicht-teil-dieser-änderung)
 
 ## 0. Voraussetzung: welche Branches nötig sind
 
-FTC in dieser Ausbaustufe läuft nicht gegen die reinen `v1`-Stände. Geprüft, nicht angenommen:
+FTC in dieser Ausbaustufe läuft nicht gegen die reinen `v1`-Stände. Geprüft, nicht angenommen — wobei
+„nicht zwingend" hier heißt: *aus dem Code hergeleitet*, nicht am Gerät nachgestellt.
 
 | Repo | Branch hier | zwingend nötig? |
 |---|---|---|
 | `OGM-Common` | `ec/v1dev-ec` | **ja** — `OPENKNX_FTC_CONSOLE` / `_lineSink` in `Console.h` existiert auf `origin/v1` überhaupt nicht (0 Treffer) |
-| `OFM-FileTransferModule` | `ec/v1dev` | **ja** — das ist das Modul selbst (0.2.0, 83 Commits vor `origin/v1`) |
+| `OFM-FileTransferModule` | `ec/v1dev` | **ja** — das ist das Modul selbst (0.2.0, 97 Commits vor `origin/v1`) |
 | `OFM-UsbExchange` | `ec/pr-littlefs-align-flash-sector-8MB-4MB` | **ja, sobald 4MB/8MB benutzt wird** — siehe unten |
-| `knx` | `ec/v1dev-ec` | nein, für dieses Profil nicht. Die 9 FTC-Dateien dort hängen ausnahmslos an `OPENKNX_FTC_CLIENT`, das hier nicht gesetzt ist. Nötig erst bei `PROFILE_MANAGER` |
-| `OFM-Network` | `ec/v1dev-ec` | nein — 0 FTC-Referenzen, hat mit FTC nichts zu tun |
+| `knx` | `ec/v1dev-ec` | **empfohlen, praktisch vorausgesetzt.** Für FTC selbst formal nicht nötig (die 9 FTC-Dateien dort hängen ausnahmslos an `OPENKNX_FTC_CLIENT`, das dieses Profil nicht setzt) — aber der Branch pinnt den TPUart-Treiber auf `ec/1.3.0-beta.1`, und **nur der** bringt die Schalter aus Abschnitt 1 mit. Außerdem: der Bau gegen ein reines `v1` ist **nie getestet worden** und wird es auch nicht |
+| `OFM-Network` | `ec/v1dev-ec` | **optional** — 0 FTC-Referenzen, hat mit FTC nichts zu tun |
+
+### Warum der knx-Branch faktisch dazugehört
+
+`knx` zieht den TPUart-Treiber als eigene Abhängigkeit, und die beiden Stände unterscheiden sich:
+
+| knx-Stand | gezogener Treiber |
+|---|---|
+| `ec/v1dev-ec` | `tpuart#ec/1.3.0-beta.1` |
+| `origin/v1` | `tpuart#1.1.0` |
+
+In `1.1.0` gibt es **keinen** der Schalter aus Abschnitt 1: `TPUART_API_LEVEL`, `TPUART_BCU_HEALTH`,
+`TPUART_BCU_REGISTER_INFO` und `TPUART_NCN_TW_AUTORESET` kommen dort alle auf null Treffer. Wer gegen ein
+reines `v1` baut, bekommt die TP-Diagnose also nicht — und `TPUART_NCN_TW_AUTORESET` ist kein
+Diagnoseschalter, sondern das Selbstheilen der NCN-Thermal-Warning.
 
 ### Warum OFM-UsbExchange zwingend wird
 
@@ -106,7 +127,7 @@ Drei Zeilen im `[custom]`-Block, damit alle Envs sie erben:
 [custom]
 build_flags =
   ...
-  ; --- OFM-FileTransferModule (FTC) -- see lib/OFM-FileTransferModule/doc/FLAGS.md ---
+  ; --- OFM-FileTransferModule (FTC) -- see lib/OFM-FileTransferModule/doc/reference/flags.md ---
   -D OPENKNX_FTC_PROFILE_DEVICE        ; end-device profile: security + download + dirops + fastupload
   -D OPENKNX_FTC_CONSOLE               ; console tunnel (obj 160) -- read by OGM-Common Console.h, which never sees the module header, so it must be -D
   -D OPENKNX_FTC_DELTA_UPDATE          ; firmware as a patch against the running image; no profile sets it (it hangs on the board, not the device class)
@@ -124,6 +145,43 @@ Warum genau diese drei:
   Geräteklasse.
 
 `PROFILE_DEVICE` ohne `CONSOLE` ist ein Build-Fehler, der die fehlende Zeile benennt. Das ist Absicht.
+
+### Dazu passend: die TPUart-Diagnoseschalter
+
+Der knx-Stack zieht seit `6ae5db2` den TPUart-Treiber als eigene Abhängigkeit
+(`https://github.com/OpenKNX/tpuart#ec/1.3.0-beta.1`). Der Treiber bringt Diagnose mit, die **komplett
+hinter Opt-in-Schaltern liegt** — ohne sie ist sie wegkompiliert, ohne Fehler und ohne Hinweis.
+
+Zusammen mit der FTC-Konsole werden diese Schalter erst wertvoll: `bcu` und `bcu stat` sind damit über den
+Bus abfragbar, ohne ans Gerät zu müssen. Deshalb stehen sie hier direkt neben den FTC-Zeilen:
+
+```ini
+  ; --- TPUart driver (pulled in by the knx stack) -- diagnostics reachable over the FTC console ---
+  -D TPUART_NCN_TW_AUTORESET           ; NCN thermal-warning auto-heal via one guarded U_RESET; robustness, not diagnostics
+  -D TPUART_BCU_HEALTH                 ; 'bcu' report shows BCU<Health> and the NCN error counters
+  -D TPUART_BCU_REGISTER_INFO          ; 'bcu stat' NCN rails + chip identity; costs one identifyNcnChip() excursion at boot
+```
+
+- `TPUART_NCN_TW_AUTORESET` ist **kein** Diagnose-, sondern ein Robustheitsschalter: eine
+  NCN-Thermal-Warning heilt sich über einen geführten `U_RESET` selbst. Gehört auf jedes Gerät mit NCN.
+- `TPUART_BCU_HEALTH` und `TPUART_BCU_REGISTER_INFO` schalten den Chip-Report frei.
+  **Vorbehalt:** `TPUART_BCU_REGISTER_INFO` ruft `identifyNcnChip()` beim Boot auf. Der Treiber-Kommentar
+  nennt das ausdrücklich einen Boot-Abstecher, den ein Produkt ohne Chip-Report nicht zahlt.
+
+Gemessen auf `release_DEVICE_UP1_PM_HF`: die drei zusammen **+2360 B Flash, ±0 B RAM**.
+
+**Nicht setzen auf einem normalen TP-Gerät:** `OPENKNX_HW_BUSMON` und `TPUART_BUSMON_INTEGRITY`. Das ist
+ein Interface-Feature (Busmonitor über einen ETS-Busmonitor-Tunnel) und hängt an der Maske. OAM-IP-Interface
+setzt es, weil es ein Interface ist; bei Maske 0x07B0 ist es fehl am Platz.
+
+### Prüfen, ob sie wirklich greifen
+
+Das ist der Punkt, an dem man sich täuscht: ein fehlender Schalter erzeugt **keine** Meldung, die Diagnose
+ist einfach nicht da. Am fertigen Image nachsehen:
+
+```sh
+strings .pio/build/<env>/firmware.elf | grep -c "NCN Rails"   # 0 = Schalter fehlt, >0 = aktiv
+```
 
 ## 2. ETS-Seite — Teil 1: ein `op:define` je Produkt-XML
 
@@ -342,9 +400,18 @@ Gemessen auf diesem Rechner: **45 s für alle acht Ziele**, ein einzelnes Host-Z
 IP-Interface und IP-Router bieten dafür einen `-SkipHostCli`-Schalter; dieses Skript hat keinen
 `param()`-Block, deshalb hier `$env:OPENKNX_SKIP_HOSTCLI = "1"`.
 
-**Eine Einschränkung:** die macOS-Ziele brauchen einen macOS-Host (`die("target %s needs a macOS host")`).
-Auf Linux oder Windows scheitern diese beiden Envs bauartbedingt — dort baut man die Matrix ohne sie oder
-setzt den Skip.
+**Was von welchem Host geht.** Die Matrix ist bewusst cross-fähig: sechs der acht Ziele bauen von
+**jedem** Host aus, weil der Pre-Build-Hook sich dafür ein projektlokales `zig` nachzieht.
+
+| Ziel | Engine | Host |
+|---|---|---|
+| linux-x64, linux-arm64, linux-armhf | zig | beliebig |
+| windows-x86, windows-x64, windows-arm64 | zig | beliebig |
+| macos-x64, macos-arm64 | host-clang + Xcode-SDK | **nur macOS** |
+
+Die beiden macOS-Ziele sind die einzige Ausnahme (`die("target %s needs a macOS host")`), weil sie
+`-isysroot` auf das Xcode-SDK und `-framework CoreFoundation` brauchen — das lässt sich nicht mitliefern.
+Auf Linux oder Windows baut man die Matrix also ohne diese zwei.
 
 Daraus folgt auch: **eine Änderung am ftc-Quelltext erreicht ein Release erst nach erneutem Matrix-Bau.**
 Ein bestehendes `.pio/build` liefert sonst weiter die alten Binaries.
@@ -378,7 +445,7 @@ Applikationsversion sehen. Beide Varianten in der `conf.xml`:
 
 ```xml
 <op:config name="%ROOM_ApplicationVersion_Dev%" value="3.7.0" />   <!-- war 3.6.0 -->
-<op:config name="%ROOM_ApplicationVersion%"     value="5.6.0" />   <!-- war 5.5.1 -->
+<op:config name="%ROOM_ApplicationVersion%"     value="5.6.1" />   <!-- war 5.5.1 -->
 ```
 
 ## 5. `include/knxprod.h` neu erzeugen — nicht überspringen
@@ -438,16 +505,25 @@ ftc -i <Router-IP> <PA> info
 Die entscheidende Zeile ist **`Funktionen`**. Sie ist die aufgelöste Antwort auf `CheckFeatures`, also das,
 was das Gerät selbst über sich behauptet — nicht das, was in der `platformio.custom.ini` steht:
 
-| angezeigt | kommt von |
-|---|---|
-| `Console` | `OPENKNX_FTC_CONSOLE` |
-| `Delta` | `OPENKNX_FTC_DELTA_UPDATE` **und** ein vorhandener OTA-Slot |
-| `Fast` | `OPENKNX_FTC_FASTUPLOAD`, aus `PROFILE_DEVICE` |
-| `Update` / `Resume` | Kern, auch ohne jeden Switch da |
+| angezeigt | Bit | kommt von |
+|---|---|---|
+| `Resume` | `0x01` | Kern, auch ohne jeden Switch da |
+| `Update` | `0x02` | Kern, sofern ein OTA-Slot vorhanden ist |
+| `Fast` | `0x04` | `OPENKNX_FTC_FASTUPLOAD`, aus `PROFILE_DEVICE` |
+| `Console` | `0x08` | `OPENKNX_FTC_CONSOLE` |
+| `Password` | `0x10` | die ETS-Stufe steht auf „Mit Passwort" — **kein** Build-Switch, ein Parameter |
+| `Locked` | `0x20` | Schreibzugriffe sind gerade gesperrt, weil niemand angemeldet ist |
+| `Delta` | `0x80` | `OPENKNX_FTC_DELTA_UPDATE` **und** ein vorhandener OTA-Slot |
 
 Fehlt `Console` oder `Delta`, ist der jeweilige Switch nicht angekommen — dann lohnt der Blick in die
 `[custom]`-Sektion und darauf, ob die Env sie wirklich erbt. `FTM-Version 0.2.0` bestätigt zusätzlich, dass
 der Branch aus Abschnitt 0 eingebunden ist.
+
+`Password` und `Locked` sind die einzigen beiden, die **nicht** aus der `platformio.custom.ini` kommen: sie
+spiegeln den ETS-Parameter aus [So sieht das Ergebnis in der ETS aus](#so-sieht-das-ergebnis-in-der-ets-aus)
+und den aktuellen Anmeldezustand. Im Bild stehen beide — die Stufe ist also auf „Mit Passwort" gesetzt und
+es ist niemand angemeldet. Genau so soll ein ausgeliefertes Gerät antworten. Zeigt die Zeile weder
+`Password` noch `Locked`, ist der Zugriffsschutz offen.
 
 ## Was es kostet
 
@@ -456,11 +532,12 @@ hängt nicht vom Flash-Layout ab — die Zahlen sind unter 2MB- und 4MB-Partitio
 
 | Konfiguration | Flash | RAM |
 |---|---|---|
-| kein FTC-Switch (bare core) | 682 044 | 70 640 |
-| `+ PROFILE_DEVICE + CONSOLE` | 692 580 (**+10 536**) | 74 976 (**+4 336**) |
-| `+ DELTA_UPDATE` | 704 156 (**+11 576**) | 75 336 (**+360**) |
+| kein Switch (bare core) | 684 252 | 70 640 |
+| `+ PROFILE_DEVICE + CONSOLE` | 694 780 (**+10 528**) | 74 976 (**+4 336**) |
+| `+ DELTA_UPDATE` | 706 356 (**+11 576**) | 75 336 (**+360**) |
+| `+ die drei TPUart-Schalter` | 708 716 (**+2 360**) | 75 336 (**+0**) |
 
-Das sind produktspezifische Werte. `doc/FLAGS.md` listet die Codegröße je Switch isoliert; die Differenz
+Das sind produktspezifische Werte. `doc/reference/flags.md` listet die Codegröße je Switch isoliert; die Differenz
 sind die Puffer, die ein Produkt mit ihnen hereinzieht.
 
 ## Funktioniert Delta auf dem eigenen Board?
@@ -471,12 +548,16 @@ Image gleichzeitig fassen kann. Jeder Build druckt die Antwort — lesen, nicht 
 ```
 knxOTA  firmware update over the KNX bus
                                 over bus     staged        time
-  ✔ full image · gzip             453 KB     453 KB   12-16 min
-  ✔ delta patch · typical          56 KB     791 KB 1.5-2.0 min
-    firmware 700 KB · filesystem 2.50 MB · usable 2.25 MB (x0.90) · applied by picoOTA
+  ✔ full image · gzip             472 KB     472 KB   13-17 min
+  ✔ delta patch · typical          56 KB     795 KB 1.5-2.0 min
+    firmware 704 KB · filesystem 2.50 MB · usable 2.25 MB (x0.90) · applied by picoOTA
 ```
 
 Delta macht aus 13–17 Minuten Vollübertragung 1,5–2 Minuten.
+
+Die gzip-Zahl ist eine Momentaufnahme, keine Konstante: sie hängt am Inhalt des Images und verschiebt sich,
+sobald sich Module ändern — auch bei gleichbleibender Flash-Größe. Aussagekräftig ist das Verhältnis,
+nicht der absolute Wert.
 
 ### Der Report beschreibt das *deklarierte* Layout, nicht den Chip
 
@@ -530,10 +611,11 @@ build_flags = ${FTC_DELTA.build_flags}
 | knxOTA-Report meldet Delta als `✘` | Möglicherweise deklariert die Env zu wenig Flash, statt einer Hardware-Grenze. `RP2040_EXCHANGE_*` gegen den echten Chip prüfen |
 | Dateien > 4 KB im LittleFS werden korrupt | 4MB/8MB ohne den OFM-UsbExchange-Branch aus Abschnitt 0 — `filesystem_size` ist dann nicht sektorausgerichtet |
 | Release enthält kein `Tools/ftc-cli`, ohne Fehlermeldung | Der ftc-cli-Block fehlt im `Build-Release.ps1` des OAM, oder `scripts/release/Post.ps1` liegt nicht im Clone. Siehe 2c und „Offen / geplant" |
+| `bcu` / `bcu stat` liefern keine Chip-Daten | Die TPUart-Schalter sind nicht gesetzt; die Diagnose ist wegkompiliert, ohne Meldung. Siehe Abschnitt 1 |
 
 ## Offen / geplant
 
-### `scripts/release/Post.ps1` liegt in keinem Clone
+### Behoben: `scripts/release/Post.ps1` lag in keinem Clone
 
 FTMs `.gitignore` enthält `[Rr]elease/` ohne Pfad-Anker. Das Muster matcht damit **jedes** Verzeichnis
 namens `release` auf jeder Ebene — also auch `scripts/release/`. Nachweis:
@@ -547,9 +629,18 @@ git check-ignore -v scripts/release/Post.ps1
 Release-Hook noch die vorbereiteten Binaries. Die Konvention aus Abschnitt 2c läuft damit nur dort, wo der
 Hook als ungetrackte lokale Datei zufällig existiert.
 
-Fix: das Muster auf die Wurzel verankern (`/[Rr]elease/`) oder `scripts/release/` gezielt ausnehmen. Vor dem
-Commit prüfen, was durch die Änderung sonst noch neu ins Tracking käme. **Noch nicht umgesetzt** — Änderung
-an einem Shared Module.
+**Inzwischen behoben.** FTMs `.gitignore` nimmt `scripts/release/` seit dem Fix ausdrücklich aus, und
+`Post.ps1` liegt im Repo:
+
+```gitignore
+[Rr]elease/
+# scripts/release/ is source, not build output: the release hooks live there and must be cloned.
+!scripts/release/
+```
+
+Die Ausnahme muss **nach** der Ausschlussregel stehen, und sie muss das **Verzeichnis** wieder einschließen:
+git steigt in ausgeschlossene Verzeichnisse gar nicht erst ab, eine Ausnahme auf einzelne Dateien darin
+greift deshalb nicht. `ftc-cli/release/` bleibt weiter ignoriert, das ist Build-Ausgabe.
 
 ### Das mächtigere `Build-Release.ps1` nach OGM-Common
 

@@ -17,6 +17,8 @@ delta firmware update over the KNX bus) in an OAM: which build switches, how the
 injected into the Common "Erweitert" page, which module branches are required, and what the release chain
 does and does not build.
 
-See [doc/FTC-Integration.md](doc/FTC-Integration.md).
+Checklist to copy: [doc/FTC-Integration-TLDR.md](doc/FTC-Integration-TLDR.md)
+Full write-up with the measurements and the discarded approaches: [doc/FTC-Integration.md](doc/FTC-Integration.md)
+What changed per release: [CHANGELOG.md](CHANGELOG.md)
 
 Thanks to all, who made this project successful.
